@@ -1,6 +1,10 @@
 <script lang="ts">
+	import NumberStepper from './NumberStepper.svelte';
+
 	type PlayerOption = { id: string; name: string };
 	type PredictionBet = { targetPlayerId: string; predictedWords: number; stake: number };
+
+	const PREDICTED_WORDS_MAX = 99;
 
 	type Props = {
 		round: number;
@@ -64,19 +68,23 @@
 				<span class="text-sm font-semibold">Player</span>
 				<select class="select" bind:value={selectedTarget}>
 					<option value="" disabled>Select player</option>
-					{#each targets as target}
+					{#each targets as target (target.id)}
 						<option value={target.id}>{target.name}</option>
 					{/each}
 				</select>
 			</label>
-			<label class="grid gap-1">
-				<span class="text-sm font-semibold">Predicted words</span>
-				<input class="input" type="number" min="0" bind:value={predictedWords} />
-			</label>
-			<label class="grid gap-1">
-				<span class="text-sm font-semibold">Stake</span>
-				<input class="input" type="number" min="1" bind:value={stake} />
-			</label>
+			<NumberStepper
+				bind:value={predictedWords}
+				min={0}
+				max={PREDICTED_WORDS_MAX}
+				label="Predicted words"
+			/>
+			<NumberStepper
+				bind:value={stake}
+				min={1}
+				max={score}
+				label="Stake"
+			/>
 		</div>
 		<div class="flex gap-2">
 			<button class="btn preset-filled-primary-500" onclick={onSubmit}>Submit Prediction</button>

@@ -26,37 +26,43 @@ export function settlePredictionBets(
 
 	for (const [targetPlayerId, targetBets] of byTarget.entries()) {
 		const actual = actualWordCounts.get(targetPlayerId) ?? 0;
+		// Only bets where actual >= predicted (target met or exceeded prediction) are eligible to win
+		const eligibleBets = targetBets.filter((bet) => actual >= bet.predictedWords);
 		let bestDistance = Number.POSITIVE_INFINITY;
-		for (const bet of targetBets) {
+		for (const bet of eligibleBets) {
 			const distance = Math.abs(actual - bet.predictedWords);
 			if (distance < bestDistance) {
 				bestDistance = distance;
 			}
 		}
 
-		const winners = targetBets.filter((bet) => Math.abs(actual - bet.predictedWords) === bestDistance);
+		const winners = eligibleBets.filter(
+			(bet) => Math.abs(actual - bet.predictedWords) === bestDistance
+		);
 		winnerIdsByTarget.set(
 			targetPlayerId,
 			winners.map((winner) => winner.bettorId)
 		);
+
+		if (winners.length === 0) continue;
 
 		const winnerSet = new Set(winners.map((winner) => winner.bettorId));
 		const losingPool = targetBets
 			.filter((bet) => !winnerSet.has(bet.bettorId))
 			.reduce((sum, bet) => sum + bet.stake, 0);
 
-		if (losingPool <= 0) continue;
-
-		const winnerPool = Math.floor(losingPool * 0.7);
-		const targetPool = losingPool - winnerPool;
-
-		const winnerDistribution = splitInteger(winnerPool, winners.length);
+		// Winners get: their stake back + full losing pool (split) + bonus (equal to their stake)
+		const poolShare = splitInteger(losingPool, winners.length);
 		for (let i = 0; i < winners.length; i += 1) {
-			const bettorId = winners[i].bettorId;
-			adjustments.set(bettorId, (adjustments.get(bettorId) ?? 0) + winnerDistribution[i]);
+			const bet = winners[i];
+			const stakeBack = bet.stake;
+			const bonus = bet.stake;
+			const total = stakeBack + poolShare[i] + bonus;
+			adjustments.set(
+				bet.bettorId,
+				(adjustments.get(bet.bettorId) ?? 0) + total
+			);
 		}
-
-		adjustments.set(targetPlayerId, (adjustments.get(targetPlayerId) ?? 0) + targetPool);
 	}
 
 	return { adjustments, winnerIdsByTarget };

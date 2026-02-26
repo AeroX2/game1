@@ -15,6 +15,7 @@
 		canSubmit: boolean;
 		myWords: string[];
 		board: string[];
+		highlightPath: number[] | null;
 		onSubmitWord: () => void;
 	};
 
@@ -32,6 +33,7 @@
 		canSubmit,
 		myWords,
 		board,
+		highlightPath,
 		onSubmitWord
 	}: Props = $props();
 </script>
@@ -40,9 +42,6 @@
 	<div class="mb-2 flex items-center gap-2">
 		<span class="badge preset-tonal-surface">Time Remaining</span>
 		<span class="badge preset-tonal-surface">Round {round}/{totalRounds}</span>
-		{#if extraLetter}
-			<span class="badge preset-filled-secondary-500">Extra Letter: {extraLetter}</span>
-		{/if}
 	</div>
 	<div class="text-3xl font-bold tabular-nums">{timeLabel}</div>
 	<div class="mt-2">
@@ -56,8 +55,9 @@
 			<span class="badge preset-tonal-surface">Your Prediction</span>
 		</p>
 		{#if myPrediction}
+			{@const targetName = players.find((p) => p.id === myPrediction.targetPlayerId)?.name ?? 'Unknown'}
 			<p class="text-sm">
-				{myPrediction.predictedWords} words, stake {myPrediction.stake}
+				{myPrediction.predictedWords} words for <strong>{targetName}</strong>, stake {myPrediction.stake}
 			</p>
 		{:else if predictionSkipped}
 			<p class="text-sm opacity-80">You skipped prediction this round.</p>
@@ -71,7 +71,7 @@
 		</p>
 		{#if myWords.length}
 			<div class="flex flex-wrap gap-2">
-				{#each myWords as word}
+				{#each myWords as word (word)}
 					<span class="badge preset-filled-primary-500">{word}</span>
 				{/each}
 			</div>
@@ -95,7 +95,7 @@
 		<span class="badge preset-tonal-surface">Live Scoreboard</span>
 	</p>
 	<ul class="space-y-2">
-		{#each players as player}
+		{#each players as player (player.id)}
 			<li class="card flex items-center justify-between px-3 py-2 transition-all duration-300">
 				<div class="flex items-center gap-2">
 					<span>{player.name}</span>
@@ -109,4 +109,4 @@
 	</ul>
 </section>
 
-<BoardGrid {board} />
+<BoardGrid {board} {extraLetter} {highlightPath} />

@@ -17,7 +17,7 @@
 		roomCodeInput,
 		roomId,
 		playerId,
-		state,
+		state: roomState,
 		wordInput,
 		feedback,
 		loading,
@@ -34,6 +34,7 @@
 		toastMessage,
 		toastTone,
 		toastVisible,
+		lastWordPath,
 		availablePredictionTargets,
 		myPredictionBet,
 		myPredictionSkipped,
@@ -45,6 +46,8 @@
 	onDestroy(() => {
 		actions.destroy();
 	});
+
+	let rulesOpen = $state(false);
 </script>
 
 <main class="mx-auto grid w-full max-w-2xl gap-4 px-4 py-6">
@@ -54,6 +57,38 @@
 			<span class="badge preset-tonal-surface">Multiplayer</span>
 		</div>
 		<p class="mt-2 text-sm opacity-80">Cloudflare Durable Objects + SvelteKit</p>
+		<button
+			class="mt-3 flex items-center gap-2 text-sm font-medium opacity-80 transition hover:opacity-100"
+			onclick={() => (rulesOpen = !rulesOpen)}
+			type="button"
+		>
+			<span>{rulesOpen ? '▼' : '▶'}</span>
+			How to play
+		</button>
+		{#if rulesOpen}
+			<div class="mt-3 space-y-3 border-t border-surface-300-700 pt-3 text-sm opacity-90">
+				<div>
+					<p class="font-semibold">Rounds</p>
+					<p>Each round has a timed word-finding phase on a shared 5×5 letter grid. You can use one extra letter (off the grid) if you win it in the letter market.</p>
+				</div>
+				<div>
+					<p class="font-semibold">Prediction</p>
+					<p>Before the round, bet on how many words another player will find. You only win if they meet or exceed your prediction; the closest winning bet gets the pool plus a bonus.</p>
+				</div>
+				<div>
+					<p class="font-semibold">Letter market</p>
+					<p>Vote for which letter goes to auction. The letter with the most votes is auctioned (blind bid). Highest bidder gets that letter as their extra letter for the round. We keep voting and auctioning until everyone has an extra letter. If one letter and one player remain, that player gets it automatically.</p>
+				</div>
+				<div>
+					<p class="font-semibold">Finding words</p>
+					<p>Words must be at least 3 letters, in the dictionary, and formed by moving to adjacent cells (including diagonals). You may use your extra letter once per word in place of a cell. No reusing the same cell in one word.</p>
+				</div>
+				<div>
+					<p class="font-semibold">Scoring</p>
+					<p>Points per word: 3–4 letters = 1, 5 = 2, 6 = 3, 7 = 5, 8+ = 11. Prediction wins add stake back, your share of the losing pool, and a bonus equal to your stake.</p>
+				</div>
+			</div>
+		{/if}
 	</header>
 
 	{#if $screen === 'lobby' && !$roomId}
@@ -62,14 +97,14 @@
 		<PregameScreen
 			roomId={$roomId ?? ''}
 			bind:totalRounds={$totalRoundsInput}
-			players={$state?.players ?? []}
+			players={$roomState?.players ?? []}
 			onConfigureRounds={actions.configureRounds}
 			onStartRound={actions.startRound}
 		/>
 	{:else if $screen === 'prediction'}
 		<PredictionScreen
-			round={$state?.currentRound ?? 0}
-			totalRounds={$state?.totalRounds ?? 0}
+			round={$roomState?.currentRound ?? 0}
+			totalRounds={$roomState?.totalRounds ?? 0}
 			timeLabel={$timeLabel}
 			score={$myPlayer?.score ?? 0}
 			targets={($availablePredictionTargets ?? []).map((player) => ({ id: player.id, name: player.name }))}
@@ -83,10 +118,11 @@
 		/>
 	{:else if $screen === 'draft'}
 		<DraftScreen
-			letters={$state?.draftLetters ?? []}
+			letters={$roomState?.draftLetters ?? []}
 			timeLabel={$timeLabel}
 			bind:selectedLetterId={$selectedDraftLetterId}
-			onSubmit={actions.submitDraftPick}
+			alreadyHaveExtraLetter={($myPlayer?.extraLetter ?? null) != null}
+			onSubmit={(letterId) => actions.submitDraftPick(letterId)}
 		/>
 	{:else if $screen === 'auction'}
 		<AuctionScreen
@@ -95,15 +131,16 @@
 			contestedLetter={$auctionContestedLetter}
 			bind:stake={$auctionStakeInput}
 			myBid={$myAuctionBid}
+			alreadyHaveExtraLetter={($myPlayer?.extraLetter ?? null) != null}
 			onSubmit={actions.submitAuctionBid}
 		/>
 	{:else if $screen === 'active'}
 		<ActiveRoundScreen
 			timeLabel={$timeLabel}
-			round={$state?.currentRound ?? 0}
-			totalRounds={$state?.totalRounds ?? 0}
+			round={$roomState?.currentRound ?? 0}
+			totalRounds={$roomState?.totalRounds ?? 0}
 			score={$myPlayer?.score ?? 0}
-			players={$state?.players ?? []}
+			players={$roomState?.players ?? []}
 			playerId={$playerId}
 			myPrediction={$myPredictionBet}
 			predictionSkipped={$myPredictionSkipped}
@@ -111,24 +148,25 @@
 			bind:wordInput={$wordInput}
 			canSubmit={$canSubmit}
 			myWords={$myPlayer?.words ?? []}
-			board={$state?.board ?? []}
+			board={$roomState?.board ?? []}
+			highlightPath={$lastWordPath}
 			onSubmitWord={actions.submitWord}
 		/>
 	{:else if $screen === 'round_results'}
 		<RoundResultsScreen
-			round={$state?.currentRound ?? 0}
-			totalRounds={$state?.totalRounds ?? 0}
-			players={$state?.players ?? []}
-			readyCount={$state?.roundReadyPlayerIds.length ?? 0}
-			totalPlayers={$state?.players.length ?? 0}
+			round={$roomState?.currentRound ?? 0}
+			totalRounds={$roomState?.totalRounds ?? 0}
+			players={$roomState?.players ?? []}
+			readyCount={$roomState?.roundReadyPlayerIds.length ?? 0}
+			totalPlayers={$roomState?.players.length ?? 0}
 			isReady={$myRoundReady}
 			onContinue={actions.startRound}
 		/>
 	{:else}
 		<ResultsScreen
-			players={$state?.players ?? []}
+			players={$roomState?.players ?? []}
 			playerId={$playerId}
-			timeLabel={`Rounds: ${$state?.totalRounds ?? 0}`}
+			timeLabel={`Rounds: ${$roomState?.totalRounds ?? 0}`}
 		/>
 	{/if}
 

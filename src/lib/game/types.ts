@@ -70,5 +70,7 @@ export type SubmitResult = {
 	message: string;
 	scoreDelta?: number;
 	word?: string;
+	/** Board cell indices in word order; -1 means extra letter was used at that position */
+	path?: number[];
 	state?: RoomSnapshot;
 };

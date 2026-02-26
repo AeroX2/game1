@@ -1,4 +1,6 @@
 <script lang="ts">
+	import NumberStepper from './NumberStepper.svelte';
+
 	type Props = {
 		roomId: string;
 		totalRounds: number;
@@ -6,6 +8,9 @@
 		onConfigureRounds: () => void;
 		onStartRound: () => void;
 	};
+
+	const TOTAL_ROUNDS_MIN = 1;
+	const TOTAL_ROUNDS_MAX = 12;
 
 	let {
 		roomId,
@@ -37,10 +42,12 @@
 	</div>
 
 	<div class="card grid gap-3 p-3 sm:grid-cols-[1fr_auto]">
-		<label class="grid gap-1">
-			<span class="text-sm font-semibold">Total Rounds</span>
-			<input class="input" type="number" min="1" max="12" bind:value={totalRounds} />
-		</label>
+		<NumberStepper
+			bind:value={totalRounds}
+			min={TOTAL_ROUNDS_MIN}
+			max={TOTAL_ROUNDS_MAX}
+			label="Total Rounds"
+		/>
 		<button class="btn preset-tonal-surface self-end" onclick={onConfigureRounds}>Save Rounds</button>
 	</div>
 

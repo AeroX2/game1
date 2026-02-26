@@ -1,14 +1,18 @@
 <script lang="ts">
+	import NumberStepper from './NumberStepper.svelte';
+
 	type Props = {
 		score: number;
 		timeLabel: string;
 		contestedLetter: string | null;
 		stake: number;
 		myBid: { stake: number } | null;
+		alreadyHaveExtraLetter: boolean;
 		onSubmit: () => void;
 	};
 
-	let { score, timeLabel, contestedLetter, stake = $bindable(0), myBid, onSubmit }: Props = $props();
+	let { score, timeLabel, contestedLetter, stake = $bindable(0), myBid, alreadyHaveExtraLetter, onSubmit }: Props =
+		$props();
 </script>
 
 <section class="card space-y-4 p-4">
@@ -24,7 +28,11 @@
 		<p class="text-2xl font-bold">{score}</p>
 	</div>
 
-	{#if myBid}
+	{#if alreadyHaveExtraLetter}
+		<div class="rounded-lg border border-surface-300-700 bg-surface-100-900 p-4 text-center text-sm opacity-80">
+			You have your extra letter. Waiting for auction to resolve…
+		</div>
+	{:else if myBid}
 		<div class="card p-3">
 			<p class="text-sm opacity-80">Your bid is locked in.</p>
 			<p class="font-medium">Stake: {myBid.stake}</p>
@@ -34,10 +42,12 @@
 			<p class="text-sm opacity-80">Now auctioning</p>
 			<p class="text-2xl font-bold">{contestedLetter ?? '?'}</p>
 		</div>
-		<div class="grid gap-1">
-			<span class="text-sm font-semibold">Stake</span>
-			<input class="input" type="number" min="0" bind:value={stake} />
-		</div>
+		<NumberStepper
+			bind:value={stake}
+			min={0}
+			max={score}
+			label="Stake"
+		/>
 		<button class="btn preset-filled-primary-500" onclick={onSubmit}>
 			{stake > 0 ? 'Submit Auction Bid' : 'Skip Auction'}
 		</button>

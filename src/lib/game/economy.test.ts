@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import { settleLetterAuction, settlePredictionBets } from './economy';
 
 describe('prediction settlement', () => {
-	it('pays winners and target from losing pool', () => {
+	it('winners get stake back + full losing pool + bonus (bonus = stake)', () => {
+		// actual 2. Eligible: p2 (pred 2), p4 (pred 1). Closest: p2 (distance 0). Winner: p2. Losers: p1, p4. Losing pool = 20.
 		const settlement = settlePredictionBets(
 			[
 				{ bettorId: 'p1', targetPlayerId: 'p3', predictedWords: 5, stake: 10 },
@@ -13,11 +14,13 @@ describe('prediction settlement', () => {
 			new Map([['p3', 2]])
 		);
 
-		assert.equal(settlement.adjustments.get('p2'), 14);
-		assert.equal(settlement.adjustments.get('p3'), 6);
+		// p2 gets: stake back 10 + full pool 20 + bonus 10 = 40
+		assert.equal(settlement.adjustments.get('p2'), 40);
+		assert.equal(settlement.adjustments.get('p3'), undefined);
 	});
 
-	it('splits winner payout when closest bet ties', () => {
+	it('only eligible bets (actual >= predicted) can win; closest among them wins', () => {
+		// actual 3: only p1 (predicted 2) eligible. p1 wins. No other bettors on p4, so losing pool = 0.
 		const settlement = settlePredictionBets(
 			[
 				{ bettorId: 'p1', targetPlayerId: 'p4', predictedWords: 2, stake: 9 },
@@ -27,9 +30,18 @@ describe('prediction settlement', () => {
 			new Map([['p4', 3]])
 		);
 
-		assert.equal(settlement.adjustments.get('p1'), 3);
-		assert.equal(settlement.adjustments.get('p2'), 3);
-		assert.equal(settlement.adjustments.get('p4'), 3);
+		// p1 wins: stake back 9 + pool 0 (p2,p3 are losers so pool=18... wait, p2 and p3 are not winners so they're losers, pool=18) + bonus 9 = 9+18+9 = 36
+		assert.equal(settlement.adjustments.get('p1'), 36);
+		assert.equal(settlement.adjustments.get('p4'), undefined);
+	});
+
+	it('sole winner with no other bettors gets stake back + bonus', () => {
+		const settlement = settlePredictionBets(
+			[{ bettorId: 'p1', targetPlayerId: 'p2', predictedWords: 3, stake: 5 }],
+			new Map([['p2', 4]])
+		);
+		// p1 wins (4 >= 3), no losing pool. Gets stake back 5 + bonus 5 = 10
+		assert.equal(settlement.adjustments.get('p1'), 10);
 	});
 });
 

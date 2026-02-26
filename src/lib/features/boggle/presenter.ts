@@ -38,6 +38,7 @@ export function createBogglePresenter() {
 	const toastMessage = writable('');
 	const toastTone = writable<ToastTone>('info');
 	const toastVisible = writable(false);
+	const lastWordPath = writable<number[] | null>(null);
 
 	let socket: WebSocket | null = null;
 	let ticker: ReturnType<typeof setInterval> | null = null;
@@ -356,15 +357,16 @@ export function createBogglePresenter() {
 		applyState(payload.state);
 	}
 
-	async function submitDraftPick() {
+	async function submitDraftPick(pickedLetterId?: string) {
 		const currentRoomId = get(roomId);
 		const currentPlayerId = get(playerId);
 		if (!currentRoomId || !currentPlayerId) return;
-		const letterId = get(selectedDraftLetterId);
+		const letterId = pickedLetterId ?? get(selectedDraftLetterId);
 		if (!letterId) {
 			feedback.set('Choose a letter first.');
 			return;
 		}
+		selectedDraftLetterId.set(letterId);
 
 		const before = get(state);
 		const res = await fetch(`/api/rooms/${currentRoomId}/draft-pick`, {
@@ -475,6 +477,10 @@ export function createBogglePresenter() {
 			return;
 		}
 		feedback.set(payload.message);
+		if (payload.path && payload.path.length > 0) {
+			lastWordPath.set(payload.path);
+			setTimeout(() => lastWordPath.set(null), 1200);
+		}
 		if (payload.state) {
 			applyState(payload.state);
 		}
@@ -520,6 +526,7 @@ export function createBogglePresenter() {
 			toastMessage,
 			toastTone,
 			toastVisible,
+			lastWordPath,
 			availablePredictionTargets,
 			myPredictionBet,
 			myPredictionSkipped,

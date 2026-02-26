@@ -5,6 +5,8 @@ export type ValidationResult = {
 	valid: boolean;
 	reason?: string;
 	usedExtraLetter?: boolean;
+	/** Board cell indices in word order; -1 means extra letter was used at that position */
+	path?: number[];
 };
 
 export const BOARD_SIZE = 5;
@@ -116,43 +118,100 @@ export function validateWordOnBoard(
 		return { valid: false, reason: 'Board is invalid.' };
 	}
 
+	const EXTRA_LETTER_INDEX = -1;
+
 	for (let i = 0; i < board.length; i += 1) {
 		const visited = new Set<number>();
-		if (search(board, tokens, i, 0, visited, normalizedExtra, false)) {
+		const path: number[] = [];
+		const found = searchWithPath(
+			board,
+			tokens,
+			i,
+			0,
+			visited,
+			normalizedExtra,
+			false,
+			path,
+			EXTRA_LETTER_INDEX
+		);
+		if (found) {
 			const usedExtraLetter = board[i] !== tokens[0] && normalizedExtra === tokens[0];
-			return { valid: true, usedExtraLetter };
+			// Only attach path if it's connected (Boggle: each step must be to a neighbor)
+			const validPath = isPathConnected(board, path) ? path : undefined;
+			return { valid: true, usedExtraLetter, path: validPath };
 		}
 	}
 
 	return { valid: false, reason: 'Word cannot be formed on this board.' };
 }
 
-function search(
+function isPathConnected(board: Board, path: number[]): boolean {
+	const size = boardSize(board);
+	const extraLetterIndex = -1;
+	let prev: number | null = null;
+	for (let i = 0; i < path.length; i += 1) {
+		const idx = path[i];
+		if (idx === extraLetterIndex) continue;
+		if (prev !== null) {
+			const hadExtraBetween = i >= 2 && path[i - 1] === extraLetterIndex;
+			const connected = hadExtraBetween
+				? shareNeighbor(size, prev, idx)
+				: areAdjacent(size, prev, idx);
+			if (!connected) return false;
+		}
+		prev = idx;
+	}
+	return true;
+}
+
+function areAdjacent(size: number, a: number, b: number): boolean {
+	const rowA = Math.floor(a / size);
+	const colA = a % size;
+	const rowB = Math.floor(b / size);
+	const colB = b % size;
+	const dr = Math.abs(rowA - rowB);
+	const dc = Math.abs(colA - colB);
+	return dr <= 1 && dc <= 1 && (dr !== 0 || dc !== 0);
+}
+
+function shareNeighbor(size: number, a: number, b: number): boolean {
+	for (const [dr, dc] of NEIGHBOR_OFFSETS) {
+		const row = Math.floor(a / size) + dr;
+		const col = (a % size) + dc;
+		if (row < 0 || row > size - 1 || col < 0 || col > size - 1) continue;
+		const mid = row * size + col;
+		if (areAdjacent(size, mid, b)) return true;
+	}
+	return false;
+}
+
+function searchWithPath(
 	board: Board,
 	tokens: string[],
 	index: number,
 	tokenIndex: number,
 	visited: Set<number>,
 	extraLetter: string | null,
-	usedExtraLetter: boolean
+	usedExtraLetter: boolean,
+	path: number[],
+	extraLetterIndex: number
 ): boolean {
-	if (visited.has(index)) return false;
+	if (!(index === -1 || index === extraLetterIndex) && visited.has(index)) return false;
 	const needed = tokens[tokenIndex];
-	const cell = board[index];
+	const cell = index >= 0 && index < board.length ? board[index] : '';
 	let nextUsedExtra = usedExtraLetter;
-
-	if (cell !== needed) {
-		if (!extraLetter || usedExtraLetter || needed !== extraLetter) {
-			return false;
-		}
-		nextUsedExtra = true;
+	const isExtraHere = cell !== needed && extraLetter && !usedExtraLetter && needed === extraLetter;
+	if (cell !== needed && !isExtraHere) {
+		return false;
 	}
+	if (isExtraHere) nextUsedExtra = true;
 
+	path.push(isExtraHere ? extraLetterIndex : index);
 	if (tokenIndex === tokens.length - 1) {
 		return true;
 	}
 
-	visited.add(index);
+	if (!isExtraHere) visited.add(index);
 	const size = boardSize(board);
 	const row = Math.floor(index / size);
 	const col = index % size;
@@ -165,13 +224,26 @@ function search(
 		}
 
 		const nextIndex = nextRow * size + nextCol;
-		if (search(board, tokens, nextIndex, tokenIndex + 1, visited, extraLetter, nextUsedExtra)) {
-			visited.delete(index);
+		if (
+			searchWithPath(
+				board,
+				tokens,
+				nextIndex,
+				tokenIndex + 1,
+				visited,
+				extraLetter,
+				nextUsedExtra,
+				path,
+				extraLetterIndex
+			)
+		) {
+			if (!isExtraHere) visited.delete(index);
 			return true;
 		}
 	}
 
-	visited.delete(index);
+	path.pop();
+	if (!isExtraHere) visited.delete(index);
 	return false;
 }
 

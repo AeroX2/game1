@@ -309,7 +309,7 @@ export class BoggleRoom {
 		}
 
 		if (this.phase === 'letter_draft') {
-			await this.resolveDraftPhase();
+			await this.resolveVotePhase();
 			await this.persist();
 			this.broadcastState();
 			return this.json({ ok: true, state: this.snapshot() });
@@ -408,6 +408,7 @@ export class BoggleRoom {
 			message: `Accepted ${word} (+${scoreDelta})`,
 			scoreDelta,
 			word,
+			path: boardValidation.path,
 			state: this.snapshot()
 		};
 	}
@@ -617,7 +618,7 @@ export class BoggleRoom {
 
 		this.draftSelections.set(playerId, letterId);
 		if (this.allPlayersPickedDraftLetter()) {
-			await this.resolveDraftPhase();
+			await this.resolveVotePhase();
 		}
 
 		await this.persist();
@@ -699,7 +700,7 @@ export class BoggleRoom {
 		return output;
 	}
 
-	private async resolveDraftPhase(): Promise<void> {
+	private async resolveVotePhase(): Promise<void> {
 		const eligiblePlayerIds = this.playersWithoutExtraLetterIds();
 		for (const playerId of eligiblePlayerIds) {
 			if (this.draftSelections.has(playerId)) continue;
@@ -709,36 +710,38 @@ export class BoggleRoom {
 			}
 		}
 
-		const selectorsByLetter = new Map<string, string[]>();
+		// Tally votes: which letter should go to auction?
+		const votesByLetter = new Map<string, number>();
 		for (const [playerId, letterId] of this.draftSelections.entries()) {
 			const player = this.players.get(playerId);
 			if (!player || player.extraLetter) continue;
-			const list = selectorsByLetter.get(letterId) ?? [];
-			list.push(playerId);
-			selectorsByLetter.set(letterId, list);
+			if (!this.draftLetters.some((e) => e.id === letterId)) continue;
+			votesByLetter.set(letterId, (votesByLetter.get(letterId) ?? 0) + 1);
 		}
 
-		this.contestedLetterIds = [];
-		const lookup = new Map(this.draftLetters.map((entry) => [entry.id, entry.letter]));
-		for (const [letterId, selectors] of selectorsByLetter.entries()) {
-			if (selectors.length === 1) {
-				const letter = lookup.get(letterId);
-				if (!letter) continue;
-				const player = this.players.get(selectors[0]);
-				if (player) {
-					this.assignExtraLetter(player.id, letter);
-				}
-				continue;
+		// Pick letter with most votes (tie-break: random among tied)
+		let chosenLetterId: string | null = null;
+		let maxVotes = 0;
+		const tied: string[] = [];
+		for (const [letterId, count] of votesByLetter.entries()) {
+			if (count > maxVotes) {
+				maxVotes = count;
+				tied.length = 0;
+				tied.push(letterId);
+			} else if (count === maxVotes) {
+				tied.push(letterId);
 			}
-			this.contestedLetterIds.push(letterId);
+		}
+		if (tied.length > 0) {
+			chosenLetterId = tied[Math.floor(Math.random() * tied.length)] ?? null;
 		}
 
-		if (!this.contestedLetterIds.length || this.auctionEligiblePlayerIds().length === 0) {
+		if (!chosenLetterId) {
 			await this.continueMarketOrPrediction();
 			return;
 		}
 
-		this.currentAuctionLetterId = this.contestedLetterIds[0] ?? null;
+		this.currentAuctionLetterId = chosenLetterId;
 		this.auctionBids.clear();
 		this.phase = 'letter_auction';
 		this.beginPhaseTimer(PHASE_TIMER_MS);
@@ -784,19 +787,37 @@ export class BoggleRoom {
 			this.assignExtraLetter(winnerId, activeLetter.letter);
 		}
 
-		this.contestedLetterIds = this.contestedLetterIds.filter((letterId) => letterId !== activeLetterId);
+		// Remove auctioned letter from pool for next vote round
+		this.draftLetters = this.draftLetters.filter((e) => e.id !== activeLetterId);
 		this.currentAuctionLetterId = null;
 		this.auctionBids.clear();
 
-		if (this.contestedLetterIds.length > 0 && this.playersWithoutExtraLetterCount() > 0) {
-			this.currentAuctionLetterId = this.contestedLetterIds[0] ?? null;
-			this.phase = 'letter_auction';
+		const withoutLetter = this.playersWithoutExtraLetterCount();
+		if (withoutLetter <= 0) {
+			await this.enterPredictionPhase();
+			return;
+		}
+		// One letter left and one player left: auto-assign and continue
+		if (this.draftLetters.length === 1 && withoutLetter === 1) {
+			const lastLetter = this.draftLetters[0];
+			const lastPlayerId = this.playersWithoutExtraLetterIds()[0];
+			if (lastLetter && lastPlayerId) {
+				this.assignExtraLetter(lastPlayerId, lastLetter.letter);
+				this.draftLetters = [];
+			}
+			await this.enterPredictionPhase();
+			return;
+		}
+		// More voting rounds: clear votes and go back to letter_draft
+		if (withoutLetter > 0 && this.draftLetters.length > 0) {
+			this.draftSelections.clear();
+			this.phase = 'letter_draft';
 			this.beginPhaseTimer(PHASE_TIMER_MS);
 			this.updateStatusFromPhase();
 			return;
 		}
 
-		await this.continueMarketOrPrediction();
+		await this.enterPredictionPhase();
 	}
 
 	private async enterPredictionPhase(): Promise<void> {
